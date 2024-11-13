@@ -1,0 +1,19 @@
+[project]
+name = "ytpo"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "google-api-python-client>=2.152.0",
+    "google-auth-httplib2>=0.2.0",
+    "google-auth-oauthlib>=1.2.1",
+    "tinydb>=4.8.2",
+    "tqdm>=4.67.0"
+]
+
+        # 'google-api-python-client',
+        # 'tqdm',
+        # 'google-auth-oauthlib',
+        # 'google-auth-httplib2',
+        # 'tinydb'

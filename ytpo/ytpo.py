@@ -4,13 +4,15 @@ import random
 import argparse
 from collections import Counter
 import os
+import re
 import shutil
 import os.path as osp
 import json
+from time import sleep
 from tqdm import tqdm
 
 import google.oauth2.credentials
-from googleapiclient.discovery import build
+from googleapiclient.discovery import build, HttpError
 from google_auth_oauthlib.flow import InstalledAppFlow
 from tinydb import TinyDB, where 
 
@@ -26,7 +28,7 @@ from tinydb import TinyDB, where
 #   https://developers.google.com/api-client-library/python/guide/aaa_client_secrets
     
 class YTPO:
-    separator = '| - | - |' #String used to separate the title and ID for list and file modes
+    separator = '- - - - -' #String used to separate the title and ID for list and file modes
     liked_videos_pl_id = 'liked-videos'
     def __init__(self):
         self.ytpo_root = osp.dirname(__file__)
@@ -229,10 +231,19 @@ class YTPO:
                         }
                     }
                 }
-        response = self.youtube.playlistItems().insert(
-                part="snippet",
-                body=body
-                ).execute()
+        while True:
+            try:
+                response = self.youtube.playlistItems().insert(
+                        part="snippet",
+                        body=body
+                        ).execute()
+                break
+            except HttpError as e:
+                print('Error response status code : {0}, reason : {1}'.format(e.status_code, e.error_details))
+                if e.status_code == 403:
+                    sleep(5)
+                    continue
+                raise e
         return response
 
     def remove_playlist_item(self,item_id):
@@ -241,13 +252,27 @@ class YTPO:
         Parameters:
         id -- ID of playlist item
         '''
-        return self.youtube.playlistItems().delete(id=item_id).execute()
+        while True:
+            try:
+                r = self.youtube.playlistItems().delete(id=item_id).execute()
+                break
+            except HttpError as e:
+                print('Error response status code : {0}, reason : {1}'.format(e.status_code, e.error_details))
+                if e.status_code == 403:
+                    sleep(5)
+                    continue
+                raise e
+        return r
 
     @classmethod
-    def combine(cls,title, item_id):
+    def combine(cls, title, item_id):
         '''
         Combines the title and id with the separator
         '''
+        # title = title.replace(':', '_').replace('*', '_').replace('?', '_').replace('"', '_').replace('<', '_').replace('>', '_').replace('|', '_')
+        # title = title.replace('!', '_').replace("'", '_')
+        before = title
+        title = re.sub(r'[^a-zA-Z\s]', '_', title)
         return "%s%s%s"%(title,cls.separator,item_id)
 
     @classmethod
@@ -280,7 +305,9 @@ class YTPO:
                 item_title = item["snippet"]["title"].replace('/','_').replace('\\','_') #Replaces back and forward slashes to '_' to avoid file path conflicts
                 item_vid_id = item["snippet"]["resourceId"]["videoId"]
                 item_id = item["id"]
-                open(osp.join(playlist_path,type(self).combine(item_title,item_id)),'a').close()
+                p = osp.join(playlist_path,type(self).combine(item_title,item_id))
+                print(p)
+                open(p,'a').close()
                 db.insert({"id": item_id,"vid_id": item_vid_id, "pl_id": pl_id, "pl_title":pl_title, "vid_title":item_title})
 
         print("\n\nThe playlists have been retrieved and the folders have been generated at %s." %(osp.abspath(playlists_root_path)))
@@ -442,8 +469,10 @@ class YTPO:
                 tasks_pbar = tqdm(task_q, desc="Updating playlists")
                 for q in tasks_pbar:
                     if q["task"]=="insert":
+                        print(f"Inserting {q}")
                         self.insert_playlist_item(q["pl_id"],q["vid_id"],q["pos"])
                     elif q["task"]=="remove":
+                        print(f"Removing {q}")
                         self.remove_playlist_item(q["id"])
             else:
                 print("Aborting")
